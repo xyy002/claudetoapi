@@ -54,3 +54,42 @@ type JsonData struct {
 type UuidBody struct {
 	UUID string `json:"uuid"`
 }
+
+type OpenAIRequest struct {
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type OpenAIResponse struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type Organization struct {
+	Uuid         string            `json:"uuid"`
+	Name         string            `json:"name"`
+	JoinToken    string            `json:"join_token"`
+	CreatedAt    string            `json:"created_at"`
+	UpdatedAt    string            `json:"updated_at"`
+	Capabilities []string          `json:"capabilities"`
+	Settings     map[string]string `json:"settings"`
+	ActiveFlags  []interface{}     `json:"active_flags"`
+}
+
+type AssistantRequest struct {
+	Model             string `json:"model"`
+	Prompt            string `json:"prompt"`
+	MaxTokensToSample int    `json:"max_tokens_to_sample"`
+	Stream            bool   `json:"stream"`
+}
+type ClaudeRes struct {
+	Completion string  `json:"completion"`
+	StopReason *string `json:"stop_reason"`
+	Model      string  `json:"model"`
+}

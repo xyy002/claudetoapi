@@ -32,7 +32,7 @@ func sendRequest(url, method string, payload *module.SendUuidMode, headers map[s
 	return client.Do(req)
 }
 
-func ToGetUuid(uuid string) {
+func ToGetUuid(uuid string, apikey string) {
 	url := "https://claude.sbai.chat/api/organizations/13b52fbc-790b-4f61-8da4-4abdd21d17a2/chat_conversations"
 	method := "POST"
 	payload := &module.SendUuidMode{
@@ -40,8 +40,7 @@ func ToGetUuid(uuid string) {
 		Name: "",
 	}
 	headers := map[string]string{
-		"Cookie": "sessionKey=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; intercom-device-id-lupk8zyo=7c3574c3-1390-49a8-a55c-79d218a83c53; intercom-session-lupk8zyo=MVo5a0JQMG1EemtRZC9tMXM4NlpQNWJ4Y0pKOHFwRzR2bGhmeTE4SkRUV2R4QnZsZlZaK3Q4dGV3cjZZT1BLVC0tYnNkMlRsbE52SC9VL2diVUtFSnpHUT09--bb47d23ce5d820b23ba28f17e387c6d700e5e1be",
-		//"User-Agent":   "Apifox/1.0.0 (https://apifox.com)",
+		"Cookie":       apikey,
 		"Content-Type": "application/json",
 	}
 
@@ -70,12 +69,67 @@ func ToGetUuid(uuid string) {
 	fmt.Println(myUuid)
 
 }
+func getOrganizationUuid(apikey string) string {
+	method := "GET"
+	url := "https://claude.sbai.chat/api/organizations"
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+
+	req.Header.Add("Cookie", apikey)
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+
+	var orgs []module.Organization
+	err = json.Unmarshal(body, &orgs)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+	if len(orgs) > 0 {
+		return orgs[0].Uuid
+	}
+	log.Println("No organizations found")
+	return ""
+}
 
 var myUuid string
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string) {
-	ToGetUuid(uuid)
+func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string, myreq module.OpenAIRequest, apiKey string) {
+	ToGetUuid(uuid, apiKey)
+	OrganizationUUID := getOrganizationUuid(apiKey)
+	var messages string
+	var usermsg string
+	for _, msg := range myreq.Messages {
+		// 根据msg.Role添加消息内容到messages字符串
+		if msg.Role == "user" {
+			messages += fmt.Sprintf("Human:%s\n\n", msg.Content)
+		} else {
+			usermsg += fmt.Sprintf("Assistant:%s\n\n", msg.Content)
+		}
+	}
+	if usermsg == "" {
+		usermsg = messages
+	}
+	if messages == "" {
+		messages = usermsg
+	}
 	url := "https://claude.sbai.chat/api/append_message"
 	method := "POST"
 
@@ -85,13 +139,13 @@ func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string) {
 			Timezone string `json:"timezone"`
 			Model    string `json:"model"`
 		}{
-			Prompt:   "",
+			Prompt:   usermsg,
 			Timezone: "Asia/Shanghai",
 			Model:    "claude-2",
 		},
-		OrganizationUUID: "13b52fbc-790b-4f61-8da4-4abdd21d17a2",
+		OrganizationUUID: OrganizationUUID,
 		ConversationUUID: myUuid,
-		Text:             "写一个雪花算法",
+		Text:             messages,
 		Attachments:      []string{},
 	}
 
@@ -107,7 +161,7 @@ func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string) {
 	if err != nil {
 		log.Println(err)
 	}
-	req.Header.Add("Cookie", "sessionKey=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; intercom-device-id-lupk8zyo=7c3574c3-1390-49a8-a55c-79d218a83c53; intercom-session-lupk8zyo=MVo5a0JQMG1EemtRZC9tMXM4NlpQNWJ4Y0pKOHFwRzR2bGhmeTE4SkRUV2R4QnZsZlZaK3Q4dGV3cjZZT1BLVC0tYnNkMlRsbE52SC9VL2diVUtFSnpHUT09--bb47d23ce5d820b23ba28f17e387c6d700e5e1be")
+	req.Header.Add("Cookie", apiKey)
 	req.Header.Add("Content-Type", "application/json")
 
 	res, err := client.Do(req)
@@ -152,6 +206,11 @@ func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string) {
 				},
 			},
 		}
+		//gptMsg := module.ClaudeRes{
+		//	Completion: result.Completion,
+		//	StopReason: nil,
+		//	Model:      result.Model,
+		//}
 		data, err := json.Marshal(gptMsg)
 		if err != nil {
 			log.Println(err)
@@ -168,8 +227,21 @@ func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string) {
 	defer wg.Done()
 }
 
-// Fetch data from the API
-func FetchData(c chan<- string, wg *sync.WaitGroup) {
+func ToSendClaudeMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string, myreq module.AssistantRequest, apiKey string) {
+	ToGetUuid(uuid, apiKey)
+	OrganizationUUID := getOrganizationUuid(apiKey)
+	//var msg rune
+	var messages, usermsg string
+	parts := strings.Split(myreq.Prompt, "\n\n")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "Human:") {
+			messages += strings.TrimPrefix(part, "Human:")
+		} else if strings.HasPrefix(part, "Assistant:") {
+			usermsg += strings.TrimPrefix(part, "Assistant:")
+		}
+	}
+	fmt.Println(myreq.Prompt)
+	fmt.Println(messages, usermsg)
 	url := "https://claude.sbai.chat/api/append_message"
 	method := "POST"
 
@@ -179,13 +251,13 @@ func FetchData(c chan<- string, wg *sync.WaitGroup) {
 			Timezone string `json:"timezone"`
 			Model    string `json:"model"`
 		}{
-			Prompt:   "",
+			Prompt:   messages,
 			Timezone: "Asia/Shanghai",
 			Model:    "claude-2",
 		},
-		OrganizationUUID: "13b52fbc-790b-4f61-8da4-4abdd21d17a2",
+		OrganizationUUID: OrganizationUUID,
 		ConversationUUID: myUuid,
-		Text:             "你好",
+		Text:             usermsg + messages,
 		Attachments:      []string{},
 	}
 
@@ -201,7 +273,7 @@ func FetchData(c chan<- string, wg *sync.WaitGroup) {
 	if err != nil {
 		log.Println(err)
 	}
-	req.Header.Add("Cookie", "sessionKey=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; intercom-device-id-lupk8zyo=7c3574c3-1390-49a8-a55c-79d218a83c53; intercom-session-lupk8zyo=MVo5a0JQMG1EemtRZC9tMXM4NlpQNWJ4Y0pKOHFwRzR2bGhmeTE4SkRUV2R4QnZsZlZaK3Q4dGV3cjZZT1BLVC0tYnNkMlRsbE52SC9VL2diVUtFSnpHUT09--bb47d23ce5d820b23ba28f17e387c6d700e5e1be")
+	req.Header.Add("Cookie", apiKey)
 	req.Header.Add("Content-Type", "application/json")
 
 	res, err := client.Do(req)
@@ -217,20 +289,8 @@ func FetchData(c chan<- string, wg *sync.WaitGroup) {
 
 	scanner := bufio.NewScanner(res.Body)
 	for scanner.Scan() {
-		c <- scanner.Text()
-	}
+		line := scanner.Text()
 
-	if err := scanner.Err(); err != nil {
-		fmt.Println(err)
-	}
-
-	close(c)
-	wg.Done()
-}
-
-// Process the fetched data
-func ProcessData(c <-chan string, out chan<- []byte, wg *sync.WaitGroup) {
-	for line := range c {
 		splitBody := strings.SplitN(line, "data:", 2) // Use SplitN to split the line into at most 2 parts
 		if len(splitBody) < 2 {
 			continue
@@ -238,42 +298,43 @@ func ProcessData(c <-chan string, out chan<- []byte, wg *sync.WaitGroup) {
 		jsonBody := strings.TrimSpace(splitBody[1]) // Get the second part, which is the JSON string
 
 		var result module.MsgResponse
-		err := json.Unmarshal([]byte(jsonBody), &result)
+		err = json.Unmarshal([]byte(jsonBody), &result)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
-		gptMsg := module.JsonData{
-			ID:      result.LogID,
-			Object:  "chat.completion.chunk",
-			Created: myUuid,
-			Model:   result.Model,
-			Choices: []module.Choice{
-				{
-					Index: 0,
-					Delta: map[string]string{
-						"content": result.Completion,
-					},
-					FinishReason: nil,
-				},
-			},
+		//gptMsg := module.JsonData{
+		//	ID:      result.LogID,
+		//	Object:  "chat.completion.chunk",
+		//	Created: myUuid,
+		//	Model:   result.Model,
+		//	Choices: []module.Choice{
+		//		{
+		//			Index: 0,
+		//			Delta: map[string]string{
+		//				"content": result.Completion,
+		//			},
+		//			FinishReason: nil,
+		//		},
+		//	},
+		//}
+		gptMsg := module.ClaudeRes{
+			Completion: result.Completion,
+			StopReason: nil,
+			Model:      result.Model,
 		}
 		data, err := json.Marshal(gptMsg)
 		if err != nil {
 			log.Println(err)
 		}
 
-		out <- data
-	}
-	close(out)
-	wg.Done()
-}
-
-// Send the processed data
-func SendData(c <-chan []byte, jsonData chan<- []byte, wg *sync.WaitGroup) {
-	for data := range c {
 		jsonData <- data
+
 	}
 
-	wg.Done()
+	if err := scanner.Err(); err != nil {
+		fmt.Println(err)
+	}
+
+	defer wg.Done()
 }
