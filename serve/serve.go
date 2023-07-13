@@ -33,7 +33,7 @@ func sendRequest(url, method string, payload *module.SendUuidMode, headers map[s
 }
 
 func ToGetUuid(uuid string, apikey string) {
-	url := "https://claude.sbai.chat/api/organizations/13b52fbc-790b-4f61-8da4-4abdd21d17a2/chat_conversations"
+	url := "https://claude.ai/api/organizations/13b52fbc-790b-4f61-8da4-4abdd21d17a2/chat_conversations"
 	method := "POST"
 	payload := &module.SendUuidMode{
 		UUID: uuid,
@@ -71,7 +71,7 @@ func ToGetUuid(uuid string, apikey string) {
 }
 func getOrganizationUuid(apikey string) string {
 	method := "GET"
-	url := "https://claude.sbai.chat/api/organizations"
+	url := "https://claude.ai/api/organizations"
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
@@ -94,6 +94,7 @@ func getOrganizationUuid(apikey string) string {
 		log.Println(err)
 		return ""
 	}
+	fmt.Println(string(body))
 
 	var orgs []module.Organization
 	err = json.Unmarshal(body, &orgs)
@@ -130,7 +131,7 @@ func ToSendMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string, myreq mo
 	if messages == "" {
 		messages = usermsg
 	}
-	url := "https://claude.sbai.chat/api/append_message"
+	url := "https://claude.ai/api/append_message"
 	method := "POST"
 
 	p := module.SendMsgMode{
@@ -231,18 +232,18 @@ func ToSendClaudeMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string, my
 	ToGetUuid(uuid, apiKey)
 	OrganizationUUID := getOrganizationUuid(apiKey)
 	//var msg rune
-	var messages, usermsg string
-	parts := strings.Split(myreq.Prompt, "\n\n")
-	for _, part := range parts {
-		if strings.HasPrefix(part, "Human:") {
-			messages += strings.TrimPrefix(part, "Human:")
-		} else if strings.HasPrefix(part, "Assistant:") {
-			usermsg += strings.TrimPrefix(part, "Assistant:")
-		}
-	}
-	fmt.Println(myreq.Prompt)
-	fmt.Println(messages, usermsg)
-	url := "https://claude.sbai.chat/api/append_message"
+	//var messages, usermsg string
+	//parts := strings.Split(myreq.Prompt, "\n\n")
+	//for _, part := range parts {
+	//	if strings.HasPrefix(part, "Human:") {
+	//		messages += strings.TrimPrefix(part, "Human:")
+	//	} else if strings.HasPrefix(part, "Assistant:") {
+	//		usermsg += strings.TrimPrefix(part, "Assistant:")
+	//	}
+	//}
+	//fmt.Println(myreq.Prompt)
+	//fmt.Println(messages, usermsg)
+	url := "https://claude.ai/api/append_message"
 	method := "POST"
 
 	p := module.SendMsgMode{
@@ -251,13 +252,13 @@ func ToSendClaudeMsg(jsonData chan<- []byte, wg *sync.WaitGroup, uuid string, my
 			Timezone string `json:"timezone"`
 			Model    string `json:"model"`
 		}{
-			Prompt:   messages,
+			Prompt:   myreq.Prompt,
 			Timezone: "Asia/Shanghai",
 			Model:    "claude-2",
 		},
 		OrganizationUUID: OrganizationUUID,
 		ConversationUUID: myUuid,
-		Text:             usermsg + messages,
+		Text:             myreq.Prompt,
 		Attachments:      []string{},
 	}
 
